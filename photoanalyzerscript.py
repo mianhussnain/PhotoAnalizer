@@ -25,8 +25,34 @@ def detect_faces(image_path):
     test_image = cv2.imread(image_path)
     gray = cv2.cvtColor(test_image, cv2.COLOR_BGR2GRAY)
     face_cascade = cv2.CascadeClassifier('./cv2_cascade_classifier/haarcascade_frontalface_default.xml')
-    faces = face_cascade.detectMultiScale(gray, 1.1, 5)
-    return test_image, faces
+    faces = face_cascade.detectMultiScale(gray, 1.3, 5, minSize=(200, 200))
+
+    shoulders_roi = test_image  
+
+    for (x, y, w, h) in faces:
+        lowerAreaPercentage = ((test_image.shape[0]-(y+h)) / test_image.shape[0]) * 100  
+        uperAreaPercentage = (y / test_image.shape[0]) * 100
+        print(f"Lower area percentage: {lowerAreaPercentage:.2f}%")
+        print(f"Uper area percentage: {uperAreaPercentage:.2f}%")
+        print(f"y of image: {y:.2f}")
+        margin = 100
+    
+        # Calculate new coordinates for the ROI
+        x_roi = max(0, x - margin)
+        y_roi = max(0, y - margin)
+        w_roi = min(test_image.shape[1], w + 2 * margin)
+        h_roi = min(test_image.shape[0], h + 2 * margin)
+
+        # Crop the image to include the shoulders
+        shoulders_roi = test_image[y_roi:y_roi + h_roi, x_roi:x_roi + w_roi]
+
+        gray = cv2.cvtColor(shoulders_roi, cv2.COLOR_BGR2GRAY)
+        face_cascade = cv2.CascadeClassifier('./cv2_cascade_classifier/haarcascade_frontalface_default.xml')
+        faces = face_cascade.detectMultiScale(gray, 1.3, 5, minSize=(200, 200))
+
+    return shoulders_roi, faces
+
+
 
 def draw_guidelines_on_faces(image, faces, output_path):
     for (x, y, w, h) in faces:
@@ -79,19 +105,21 @@ def process_directory(input_directory, output_directory, draw_guidelines=True):
             with Image.open(input_path) as image:
                 processed_image = process_image(session, image, size=(600, 600), bgcolor='#FFFFFF')
                 processed_image.save(output_path)
-
-            if draw_guidelines:
                 test_image, detected_faces = detect_faces(output_path)
-                height, width, _ = test_image.shape
-                print(f'shape0 {height} shape1 {width}')
-
-                if len(detected_faces) == 0:
+                # print(f'test_image {test_image} detected_faces {detected_faces}')
+            if len(detected_faces) == 0:
                     print(f'Face not detected in {filename}')
-                else:
+            else:
+                white_background = Image.new("RGB", processed_image.size, "white")
+                white_background.paste(Image.fromarray(test_image), (0, 0))
+                white_background.save(output_path)
+
+                if draw_guidelines:
                     draw_guidelines_on_faces(test_image, detected_faces, output_path)
 
+
 if __name__ == "__main__":
-    input_directory = "./test_images"
+    input_directory = "E:/server_images_bg"
     output_directory = "./output_images_directory"
 
     process_directory(input_directory, output_directory, draw_guidelines=True)
