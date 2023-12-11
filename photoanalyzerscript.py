@@ -4,7 +4,7 @@ import numpy as np
 from rembg import remove, new_session
 from PIL import Image
 from matplotlib import pyplot as plt 
-from matplotlib.patches import FancyArrowPatch , Rectangle
+from matplotlib.patches import FancyArrowPatch , Rectangle,Circle
 
 plt.rcParams['figure.figsize'] = (10.0, 8.0)
 
@@ -49,16 +49,63 @@ def detect_faces(image_path):
         gray = cv2.cvtColor(shoulders_roi, cv2.COLOR_BGR2GRAY)
         face_cascade = cv2.CascadeClassifier('./cv2_cascade_classifier/haarcascade_frontalface_default.xml')
         faces = face_cascade.detectMultiScale(gray, 1.3, 5, minSize=(200, 200))
+           
+
 
     return shoulders_roi, faces
 
+def is_red_eye(eye_image):
+    # Convert the eye image to HSV color space
+    eye_hsv = cv2.cvtColor(eye_image, cv2.COLOR_BGR2HSV)
 
+    # Define a range for red color in HSV
+    lower_red = np.array([0, 100, 100], dtype=np.uint8)
+    upper_red = np.array([10, 255, 255], dtype=np.uint8)
+
+    # Create a mask for red color
+    red_mask = cv2.inRange(eye_hsv, lower_red, upper_red)
+
+    # Calculate the percentage of red pixels in the mask
+    red_pixel_percentage = np.count_nonzero(red_mask) / (eye_image.shape[0] * eye_image.shape[1]) * 100
+    
+    print(str(red_pixel_percentage) +'red_pixel_percentage')
+    # Adjust the threshold based on your observations
+    red_eye_threshold = 80.0  
+
+    # Check if the percentage of red pixels exceeds the threshold
+    return red_pixel_percentage > red_eye_threshold
 
 def draw_guidelines_on_faces(image, faces, output_path):
     for (x, y, w, h) in faces:
         fig, ax = plt.subplots(figsize=(10, 10))
         ax.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         ax.axis('off')
+
+
+        lowerAreaPercentage = ((image.shape[0] - (y + h)) / image.shape[0]) * 100
+        uperAreaPercentage = (y / image.shape[0]) * 100
+        ax.text(image.shape[0] / 2, image.shape[1], f"{lowerAreaPercentage:.2f}%",
+                color=(203/255, 12/255, 255/255), fontsize=12)
+
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        eye_cascade = cv2.CascadeClassifier('./cv2_cascade_classifier/haarcascade_eye.xml')
+        roi_gray = gray[y:y + h, x:x + w]
+        eyes = eye_cascade.detectMultiScale(roi_gray, 1.1, 5, minSize=(30, 30))
+
+        for (ex, ey, ew, eh) in eyes:
+            eye_center = (x + ex + ew // 2, y + ey + eh // 2)
+            eye_radius = min(ew, eh) // 2
+            eye_circle = Circle(eye_center, eye_radius, color='blue', fill=False, linewidth=2)
+            ax.add_patch(eye_circle)
+
+            # Extract the eye region
+            eye_image = image[y + ey:y + ey + eh, x + ex:x + ex + ew]
+
+            # Check if the eye region contains red-eye
+            if is_red_eye(eye_image):
+                print("Red-eye detected!")
+            else:
+                print("No red-eye detected.")
 
         linewidthh = 1.5
         rect = Rectangle((x, y), w, h, linewidth=2, edgecolor='red', facecolor='none')
@@ -84,7 +131,7 @@ def draw_guidelines_on_faces(image, faces, output_path):
         ax.add_patch(arrow2)
 
         # Set the figure size explicitly
-        fig.set_size_inches(image.shape[1] / 100, image.shape[0] / 100)
+        fig.set_size_inches((image.shape[1] / 100), (image.shape[0] / 100)+2)
 
         plt.savefig(output_path, bbox_inches='tight')
         plt.close()
@@ -109,14 +156,14 @@ def process_directory(input_directory, output_directory, draw_guidelines=True):
                 # print(f'test_image {test_image} detected_faces {detected_faces}')
             if len(detected_faces) == 0:
                     print(f'Face not detected in {filename}')
+                    os.remove(output_path)
             else:
-                white_background = Image.new("RGB", processed_image.size, "white")
+                white_background = Image.new("RGB", (600,600), "white")
                 white_background.paste(Image.fromarray(test_image), (0, 0))
                 white_background.save(output_path)
 
                 if draw_guidelines:
                     draw_guidelines_on_faces(test_image, detected_faces, output_path)
-
 
 if __name__ == "__main__":
     input_directory = "E:/server_images_bg"
